@@ -1,0 +1,147 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 資料庫
+  postgres:
+    image: postgres:15
+    container_name: sentient_trader_postgres
+    environment:
+      POSTGRES_DB: sentient_trader
+      POSTGRES_USER: sentient_user
+      POSTGRES_PASSWORD: sentient_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - sentient_network
+    restart: unless-stopped
+
+  # Redis 快取
+  redis:
+    image: redis:7-alpine
+    container_name: sentient_trader_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - sentient_network
+    restart: unless-stopped
+
+  # FastAPI 後端
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: sentient_trader_api
+    environment:
+      - DATABASE_URL=postgresql://sentient_user:sentient_password@postgres:5432/sentient_trader
+      - REDIS_URL=redis://redis:6379
+      - DEBUG=True
+      - ENVIRONMENT=development
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+      - ./ai:/app/ai
+      - ./data:/app/data
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - sentient_network
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Streamlit 前端
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: sentient_trader_frontend
+    environment:
+      - API_BASE_URL=http://api:8000
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./frontend:/app/frontend
+    depends_on:
+      - api
+    networks:
+      - sentient_network
+    restart: unless-stopped
+    command: streamlit run frontend/main.py --server.port 8501 --server.address 0.0.0.0
+
+  # 數據獲取服務
+  data_fetcher:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.data_fetcher
+    container_name: sentient_trader_data_fetcher
+    environment:
+      - DATABASE_URL=postgresql://sentient_user:sentient_password@postgres:5432/sentient_trader
+      - REDIS_URL=redis://redis:6379
+      - TWITTER_BEARER_TOKEN=${TWITTER_BEARER_TOKEN}
+      - NEWS_API_KEY=${NEWS_API_KEY}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - sentient_network
+    restart: unless-stopped
+    command: python -m data.fetchers.scheduler
+
+  # AI 模型服務
+  ai_service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ai_service
+    container_name: sentient_trader_ai_service
+    environment:
+      - DATABASE_URL=postgresql://sentient_user:sentient_password@postgres:5432/sentient_trader
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    volumes:
+      - ./ai:/app/ai
+      - ./models:/app/models
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - sentient_network
+    restart: unless-stopped
+    command: python -m ai.models.sentiment_processor
+
+  # Nginx 反向代理（可選）
+  nginx:
+    image: nginx:alpine
+    container_name: sentient_trader_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./docker/nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - api
+      - frontend
+    networks:
+      - sentient_network
+    restart: unless-stopped
+    profiles:
+      - production
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  sentient_network:
+    driver: bridge 
