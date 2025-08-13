@@ -40,6 +40,40 @@ class BaseSchema(BaseModel):
         }
 
 
+# 使用者相關模型
+class UserBase(BaseSchema):
+    email: str = Field(..., description="使用者 Email")
+    full_name: Optional[str] = Field(None, description="使用者姓名")
+    preferences: Optional[Dict[str, Any]] = Field(None, description="偏好設定")
+
+
+class UserCreate(BaseSchema):
+    email: str = Field(..., description="Email")
+    full_name: Optional[str] = Field(None, description="姓名")
+    password: str = Field(..., min_length=6, description="密碼")
+
+
+class UserResponse(UserBase):
+    id: int
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class LoginRequest(BaseSchema):
+    email: str = Field(...)
+    password: str = Field(...)
+
+
+class TokenResponse(BaseSchema):
+    access_token: str
+    token_type: str = Field("bearer")
+
+
+class UserPreferencesUpdate(BaseSchema):
+    preferences: Dict[str, Any]
+
+
 # KOL 相關模型
 class KOLBase(BaseSchema):
     name: str = Field(..., description="KOL 姓名")

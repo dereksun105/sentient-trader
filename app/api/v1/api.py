@@ -5,7 +5,7 @@ Sentient Trader - API 路由主入口點
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import kols, posts, sentiment, stocks, alerts, correlations, dashboard
+from app.api.v1.endpoints import kols, posts, sentiment, stocks, alerts, correlations, dashboard, auth, users
 
 # 建立主 API 路由器
 api_router = APIRouter()
@@ -52,3 +52,15 @@ api_router.include_router(
     prefix="/dashboard",
     tags=["Dashboard"]
 ) 
+
+api_router.include_router(
+    auth.router,
+    prefix="/auth",
+    tags=["Auth"]
+)
+
+api_router.include_router(
+    users.router,
+    prefix="/users",
+    tags=["Users"]
+)

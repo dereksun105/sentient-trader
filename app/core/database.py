@@ -17,7 +17,7 @@ from app.core.config import settings
 logger = structlog.get_logger()
 
 # SQLAlchemy 配置
-SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
+SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL.replace("postgresql://", "postgresql+psycopg://")
 
 # 建立資料庫引擎
 engine = create_engine(

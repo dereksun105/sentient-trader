@@ -143,12 +143,16 @@ def call_api(endpoint: str, method: str = "GET", data: Dict = None) -> Dict:
     """
     try:
         url = f"{API_BASE_URL}/{endpoint}"
+        headers = {}
+        token = st.session_state.get("auth_token") if "auth_token" in st.session_state else None
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         if method == "GET":
-            response = requests.get(url)
+            response = requests.get(url, headers=headers)
         elif method == "POST":
-            response = requests.post(url, json=data)
+            response = requests.post(url, json=data, headers=headers)
         elif method == "PUT":
-            response = requests.put(url, json=data)
+            response = requests.put(url, json=data, headers=headers)
         else:
             return {"error": "不支援的 HTTP 方法"}
         
@@ -158,6 +162,54 @@ def call_api(endpoint: str, method: str = "GET", data: Dict = None) -> Dict:
             return {"error": f"API 錯誤: {response.status_code}"}
     except requests.exceptions.RequestException as e:
         return {"error": f"連接錯誤: {str(e)}"}
+
+
+# 初始化登入狀態
+if "auth_token" not in st.session_state:
+    st.session_state["auth_token"] = None
+if "current_user" not in st.session_state:
+    st.session_state["current_user"] = None
+
+
+def display_auth_gate():
+    """
+    前置登入/註冊頁：未登入者只能看到本頁
+    """
+    st.markdown('<h1 class="main-header">🔐 登入 Sentient Trader</h1>', unsafe_allow_html=True)
+    st.markdown("#### 請先登入或建立帳號以使用儀表板")
+    tabs = st.tabs(["登入", "註冊"])
+    with tabs[0]:
+        with st.form("login_form", clear_on_submit=False):
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input("Password", type="password", key="login_password")
+            submitted = st.form_submit_button("登入")
+            if submitted:
+                resp = call_api("auth/login", method="POST", data={"email": email, "password": password})
+                if resp and not resp.get("error") and resp.get("access_token"):
+                    st.session_state["auth_token"] = resp["access_token"]
+                    me = call_api("auth/me", method="GET")
+                    if me and not me.get("error"):
+                        st.session_state["current_user"] = me
+                        st.success("登入成功")
+                        st.rerun()
+                else:
+                    st.error(resp.get("error") or "登入失敗")
+    with tabs[1]:
+        with st.form("register_form", clear_on_submit=True):
+            reg_email = st.text_input("Email", key="reg_email")
+            reg_name = st.text_input("Full name", key="reg_name")
+            reg_password = st.text_input("Password", type="password", key="reg_password")
+            reg_submitted = st.form_submit_button("建立帳號")
+            if reg_submitted:
+                r = call_api("auth/register", method="POST", data={
+                    "email": reg_email,
+                    "full_name": reg_name,
+                    "password": reg_password
+                })
+                if r and not r.get("error") and r.get("email"):
+                    st.success("註冊成功，請切換到登入分頁進行登入")
+                else:
+                    st.error(r.get("error") or "註冊失敗")
 
 
 def get_mock_kols_data():
@@ -266,6 +318,16 @@ def display_header():
     """
     st.markdown('<h1 class="main-header">📈 Sentient Trader</h1>', unsafe_allow_html=True)
     st.markdown("### AI 驅動的金融情報平台")
+    # 右上角使用者資訊 / 登出
+    col_l, col_r = st.columns([4, 2])
+    with col_r:
+        if st.session_state.get("auth_token") and st.session_state.get("current_user"):
+            user = st.session_state["current_user"]
+            st.success(f"已登入：{user.get('email')}")
+            if st.button("登出"):
+                st.session_state["auth_token"] = None
+                st.session_state["current_user"] = None
+                st.rerun()
     st.markdown("---")
 
 
@@ -915,6 +977,11 @@ def main():
     """
     主函數
     """
+    # 先檢查登入狀態，未登入導向前置登入頁
+    if not st.session_state.get("auth_token") or not st.session_state.get("current_user"):
+        display_auth_gate()
+        return
+
     display_header()
     
     # 側邊欄
@@ -935,7 +1002,12 @@ def main():
         
         # 檢查後端連接
         try:
-            health_check = requests.get("http://localhost:8000/health", timeout=2)
+            # 若已登入，帶入 token
+            headers = {}
+            token = st.session_state.get("auth_token")
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            health_check = requests.get("http://localhost:8000/health", timeout=2, headers=headers)
             if health_check.status_code == 200:
                 st.success("✅ API 連接正常")
             else:

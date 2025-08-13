@@ -3,7 +3,7 @@ Sentient Trader - 資料庫模型
 定義所有資料庫表結構和關聯
 """
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Boolean, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Boolean, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -36,6 +36,28 @@ class KOL(Base):
     
     def __repr__(self):
         return f"<KOL(id={self.id}, name='{self.name}', username='{self.username}')>"
+
+
+class User(Base):
+    """
+    使用者模型
+    儲存帳號、密碼雜湊與偏好設定
+    """
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    full_name = Column(String(255), nullable=True)
+    password_hash = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # 偏好設定（例如儀表板佈局、追蹤的股票/KOL）
+    preferences = Column(JSON, nullable=True)
+
+    def __repr__(self):
+        return f"<User(id={self.id}, email='{self.email}')>"
 
 
 class SocialMediaPost(Base):
